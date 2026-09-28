@@ -1,13 +1,30 @@
-from architecture import Component, Module
 from logger import app_logger as log
+from architecture import Component, Module, ModuleMetadata
+from ModuleManager import ModuleManager
 
 
-class Manager(Module):
-    def __init__(self, parent) -> None:
-        super().__init__(parent)
-        component_1 = Component(self)
-        component_2 = Component(self)
-    
+class WindowsAppModule(Module):
+    metadata = ModuleMetadata(
+        name="windows_apps",
+        version="1.0.0",
+        provides=["app_provider"],
+    )
+
+    def on_load(self):
+        print("WindowsAppModule loaded")
 
 
-main_module = Manager(None)
+class PetModule(Module):
+    metadata = ModuleMetadata(
+        name="pet",
+        version="1.0.0",
+        requires=["app_provider"],
+    )
+
+    def on_load(self):
+        app_module = self.services["app_provider"]
+
+        print(
+            "PetModule loaded, connected to:",
+            app_module.metadata.name
+        )
