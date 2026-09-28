@@ -5,9 +5,12 @@ from app.core.ModuleManager import ModuleManager
 from app.test_modules import WindowsAppModule, PetModule
 
 
-manager = ModuleManager()
+class Application():
+    def __init__(self) -> None:
+        manager = ModuleManager()
+
+        manager.load_all()
 
 # manager.register(WindowsAppModule())
 # manager.register(PetModule())
 
-manager.load_all()

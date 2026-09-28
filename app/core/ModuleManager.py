@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.architecture import Component, Module, ModuleMetadata
+from architecture import Component, Module, ModuleMetadata
 
 from dataclasses import dataclass, field
 from typing import Any

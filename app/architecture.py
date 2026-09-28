@@ -1,7 +1,7 @@
 from typing import final, Any
 from dataclasses import dataclass, field
 
-from app.logger import app_logger as log
+from logger import app_logger as log
 
 @dataclass
 class ModuleMetadata:
