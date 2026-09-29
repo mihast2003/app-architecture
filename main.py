@@ -1,13 +1,11 @@
-from app.logger import app_logger as log
-from app.architecture import Component, Module, ModuleMetadata
+from app.core.logger import app_logger as log
+from app.core.architecture import Component, Module
 
 from app.core.ModuleManager import ModuleManager
-from app.test_modules import WindowsAppModule, PetModule
+
+from app.core.application import Application
 
 
-manager = ModuleManager()
+app = Application()
 
-# manager.register(WindowsAppModule())
-# manager.register(PetModule())
-
-manager.load_all()
+app.debug()

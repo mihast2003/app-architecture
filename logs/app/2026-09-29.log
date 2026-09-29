@@ -1,0 +1,19 @@
+[13:25:25][DEBUG]: Module loaded: ModuleManager
+[13:25:25][DEBUG]: Module loaded: WindowsAppModule
+[13:26:12][DEBUG]: Module loaded: ModuleManager
+[13:26:12][DEBUG]: Module loaded: WindowsAppModule
+[13:47:31][DEBUG]: Module loaded: ModuleManager
+[13:47:31][DEBUG]: Component loaded: ModuleFinder
+[13:48:40][DEBUG]: Module loaded: ModuleManager
+[13:48:40][DEBUG]: Component loaded: ModuleFinder
+[13:48:40][DEBUG]: Module loaded: ModuleOne
+[14:37:44][DEBUG]: Component loaded: ModuleFinder
+[14:37:44][DEBUG]: Module loaded: ModuleOne
+[14:39:04][DEBUG]: ModuleFinder: Component loaded: ModuleFinder
+[14:39:04][DEBUG]: ModuleOne: Module loaded: ModuleOne
+[14:39:30][DEBUG]: ModuleManager: Component loaded: ModuleFinder
+[14:39:30][DEBUG]: ModuleManager: Module loaded: ModuleOne
+[15:00:04][DEBUG]: ModuleManager: Component loaded: ModuleFinder
+[15:00:04][DEBUG]: ModuleManager: Module loaded: ModuleOne
+[15:00:26][DEBUG]: ModuleManager: Component loaded: ModuleFinder
+[15:00:26][DEBUG]: ModuleManager: Module loaded: ModuleOne

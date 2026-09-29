@@ -1,16 +1,26 @@
-from logger import app_logger as log
-from architecture import Component, Module, ModuleMetadata
+from pathlib import Path
 
-from ModuleManager import ModuleManager
-from test_modules import WindowsAppModule, PetModule
+from app.core.logger import app_logger as log
+from app.core.architecture import Component, Module
+
+from app.core.ModuleManager import ModuleManager
+
+ROOT_DIR = Path("D:\\work\\projects\\app-architecture")
 
 
 class Application():
     def __init__(self) -> None:
-        manager = ModuleManager()
+        modules_dir = ROOT_DIR / "app" / "modules"
 
-        manager.load_all()
+        self.module_manager = ModuleManager()
 
-# manager.register(WindowsAppModule())
-# manager.register(PetModule())
+        self.module_manager.load_core_modules(modules_dir)
+
+        self.module_manager.discover_modules(modules_dir)
+
+        self.module_manager.start_all()
+
+    def debug(self):
+        print("debugging application")
+
 
