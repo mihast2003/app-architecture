@@ -14,11 +14,13 @@ class Application():
 
         self.module_manager = ModuleManager()
 
-        self.module_manager.load_core_modules(modules_dir)
+        # self.module_manager.load_core_modules(modules_dir)
 
         self.module_manager.discover_modules(modules_dir)
 
         self.module_manager.start_all()
+
+        self.module_manager.load_all()
 
     def debug(self):
         print("debugging application")

@@ -1,0 +1,6 @@
+name = "Customer Module"
+version = "1.0.0"
+role = "core-module"
+provides = ["default-customer"]
+requires = ["default-shop"]
+entry_point = "CustomerModule:CustomerModule"

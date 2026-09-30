@@ -17,7 +17,7 @@ class ModuleData():
     path: Path
 
 
-class ModuleManager():
+class ModuleManager(Module):
     def __init__(self) -> None:
         self.children = [] # must have because its the root of ownership tree
 

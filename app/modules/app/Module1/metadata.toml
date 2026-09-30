@@ -1,6 +1,0 @@
-name = "Module One"
-version = "1.0.0"
-role = "core-module"
-provides = ["module1"]
-requires = ["module2"]
-entry_point = "Module1:ModuleOne"

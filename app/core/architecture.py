@@ -5,27 +5,46 @@ from app.core.logger import app_logger as log
 
 class Component():
     """
-    Component is a base building block class. Has parent and children connections to establish ownership.
+    Component is a base building block class. Has parent and children connections to establish ownership
     """
     def __init__(self, parent) -> None:
         """
         Creates a Component() class
 
-        :param parent: parent Component. Components are automatically loaded and unloaded in order of ownership.
+        :param parent: parent Component. Components are automatically loaded and unloaded in order of ownership
         """
-        if parent is None:
-            raise ValueError("Component requires a parent")
+        if not isinstance(parent, (Component, Module)):
+            print(parent.__class__.__bases__)
+            raise ValueError(f"Component {self.__class__.__name__} requires a valid Component or Module parent")
         
-        if parent.children:
-            parent.children.append(self)
-
         self.parent = parent
-        self.children: list = []
+        self.children: list[Component] = []
+
+        self.parent.children.append(self)
+
         self.log_loading()
+
+    def detach(self):
+        """
+        Removes reference to Component from its parent's children, and the same for its children
+        """
+        for child in self.children.copy():
+            child.detach()
+
+        self.children.clear()
+        if not self.parent: return
+
+        try:
+            self.parent.children.remove(self)
+        except ValueError as e:
+            raise RuntimeError(f"Could not remove a child Component: {e}") from e
+        
+        self.parent = None
+
         
     def log_loading(self):
         object_class = "Component"
-        if Module in self.__class__.__bases__:
+        if not isinstance(self, Module):
             object_class = "Module"
 
         log.debug(f"{self.parent.__class__.__name__}: {object_class} loaded: {self.__class__.__name__}")

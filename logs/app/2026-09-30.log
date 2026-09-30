@@ -1,0 +1,7 @@
+[10:51:31][DEBUG]: ModuleManager: Component loaded: ModuleFinder
+[10:51:31][DEBUG]: ModuleManager: Module loaded: ShopModule
+[10:53:55][DEBUG]: ModuleManager: Component loaded: ModuleFinder
+[10:53:55][DEBUG]: ModuleManager: Module loaded: CustomerModule
+[10:53:55][DEBUG]: ModuleManager: Module loaded: ShopModule
+[13:27:07][DEBUG]: ModuleManager: Component loaded: ModuleFinder
+[15:53:11][DEBUG]: ModuleManager: Component loaded: ModuleFinder

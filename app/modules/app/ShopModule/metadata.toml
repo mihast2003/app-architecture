@@ -1,0 +1,6 @@
+name = "Shop Module"
+version = "1.0.0"
+role = "core-module"
+provides = ["default-shop"]
+requires = []
+entry_point = "ShopModule:ShopModule"
