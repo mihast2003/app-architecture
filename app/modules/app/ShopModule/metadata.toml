@@ -1,6 +1,11 @@
 name = "Shop Module"
 version = "1.0.0"
 role = "core-module"
-provides = ["default-shop"]
-requires = []
+priority = 100
 entry_point = "ShopModule:ShopModule"
+
+[provides]
+default-shop = "1.0"
+
+[requires]
+# None

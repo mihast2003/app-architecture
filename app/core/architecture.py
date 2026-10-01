@@ -22,6 +22,8 @@ class Component():
 
         self.parent.children.append(self)
 
+        self._init()
+
         self.log_loading()
 
     def detach(self):
@@ -44,7 +46,7 @@ class Component():
         
     def log_loading(self):
         object_class = "Component"
-        if not isinstance(self, Module):
+        if isinstance(self, Module):
             object_class = "Module"
 
         log.debug(f"{self.parent.__class__.__name__}: {object_class} loaded: {self.__class__.__name__}")
