@@ -101,7 +101,7 @@ class Module(Component):
         self.metadata: dict
         self.services: dict[str, Any] = {}
 
-    def connect(self, role: str, service: Any):
-        self.services[role] = service
+    def connect(self, service: str, module: Module):
+        self.services[service] = module
 
 

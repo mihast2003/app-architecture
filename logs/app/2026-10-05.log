@@ -1,0 +1,13 @@
+[13:37:08][DEBUG]: ModuleManager: Component loaded: ModuleFinder
+[13:37:08][DEBUG]: ModuleManager: Component loaded: ModuleIndexer
+[13:44:40][DEBUG]: ModuleManager: Component loaded: ModuleFinder
+[13:44:40][DEBUG]: ModuleManager: Component loaded: ModuleIndexer
+[13:44:40][DEBUG]: ModuleManager: Component loaded: DependencyResolver
+[14:26:54][DEBUG]: ModuleManager: Component loaded: ModuleFinder
+[14:26:54][DEBUG]: ModuleManager: Component loaded: ModuleIndexer
+[14:26:54][DEBUG]: ModuleManager: Component loaded: DependencyResolver
+[14:28:01][DEBUG]: ModuleManager: Component loaded: ModuleFinder
+[14:28:01][DEBUG]: ModuleManager: Component loaded: ModuleIndexer
+[14:28:01][DEBUG]: ModuleManager: Component loaded: DependencyResolver
+[14:28:01][DEBUG]: ModuleManager: Component loaded: ServiceManager
+[14:28:01][DEBUG]: ModuleManager: Module loaded: ShopModule

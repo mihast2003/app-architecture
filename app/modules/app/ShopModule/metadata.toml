@@ -1,6 +1,6 @@
 name = "Shop Module"
 version = "1.0.0"
-role = "core-module"
+id = "yoji.shop-module"
 priority = 100
 entry_point = "ShopModule:ShopModule"
 

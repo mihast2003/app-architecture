@@ -7,23 +7,26 @@ from pathlib import Path
 
 from app.core.architecture import Component, Module
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Any
 
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
+from app.core.ServiceManager import ServiceManager
+
 @dataclass
 class ModuleData():
     name: str
     version: str
-    role: str
+    id: str
     priority: int
 
     provides: dict[str, str]
     requires: dict[str, str]
 
     entry_point_filepath: Path
+    entry_point_classname: str
     metadata_filepath: Path
 
 
@@ -40,10 +43,6 @@ class ModuleManager(Module):
     def on_init(self):
         self.module_finder = ModuleFinder(parent=self)
 
-    # def load_core_modules(self, modules_dir):
-    #     modules = self.module_finder.load_core_modules(modules_dir)
-    #     self.modules = modules
-
     def discover_modules(self, modules_dir):
         self.all_modules_data = self.module_finder.discover_modules(modules_dir)
         # print(self.all_modules_data)
@@ -52,10 +51,28 @@ class ModuleManager(Module):
         self.module_indexer = ModuleIndexer(parent=self)
         self.module_indexer.index(self.all_modules_data)
 
-    def reolve_dependencies(self):
+    def resolve_dependencies(self):
         self.module_resolver = DependencyResolver(parent=self)
-        self.module_resolver.resolve(self.module_indexer)
+        self.providers, self.dependencies = self.module_resolver.resolve(self.module_indexer)
 
+    def start_services(self):
+        self.service_manager = ServiceManager(parent=self)
+
+        for service_name, moduledata in self.providers.items():
+            module = self.module_finder.get_module(moduledata)
+            self._add_module(module, moduledata)
+            self.service_manager.register(name=service_name, module=module)
+            print(f"Added module '{moduledata.name}' as service '{service_name}'")
+
+    def _add_module(self, module, moduledata):
+        self.active_modules.append(module)
+
+    # def connect_services(self, role: str, service: Module):
+    #     for module in self.active_modules:
+    #         required_services = self.all_modules_data[module]
+    #         for service in required_services:
+    #             service_module = self.service_manager.get(service)
+    #             module.connect(service=service, module=service_module)
 
 # region all_helpers
     def start_all(self):
@@ -94,31 +111,6 @@ class ModuleFinder(Component):
 
         return modules_metadata
 
-
-    # def load_core_modules(self, dir) -> list:
-    #     instances = []
-
-    #     for metadata_path in dir.rglob("metadata.toml"):
-    #         try:
-    #             with metadata_path.open("rb") as file:
-    #                 metadata = tomllib.load(file)
-
-    #             if metadata.get("role") != "core-module":
-    #                 continue
-                
-    #             module = self._get_module(metadata_path=metadata_path, metadata=metadata)
-    #             instances.append(module)
-
-    #             print(f"Discovered core module: {metadata['name']}")
-
-    #         except Exception as error:
-    #             print(
-    #                 f"Failed to discover core module at "
-    #                 f"{metadata_path.parent}: {error}"
-    #             )
-
-    #     return instances
-
     def _load_module_data(self, metadata_filepath: Path) -> ModuleData:
         try:
             with metadata_filepath.open("rb") as file:
@@ -131,7 +123,7 @@ class ModuleFinder(Component):
         try:
             name = metadata["name"]
             version = metadata["version"]
-            role = metadata["role"]
+            id = metadata["id"]
             priority = metadata["priority"]
             provides = metadata["provides"]
             requires = metadata["requires"]
@@ -148,9 +140,12 @@ class ModuleFinder(Component):
 
         if not isinstance(version, str):
             raise ValueError("'version' must be a string")
-
-        if not isinstance(role, str):
-            raise ValueError("'role' must be a string")
+        
+        if not isinstance(id, str):
+            raise ValueError("'id' must be a string")
+        
+        if not isinstance(class_name, str):
+            raise ValueError("Entry point and class name must be a string")
 
         if not isinstance(priority, int):
             raise ValueError("'priority' must be an integer")
@@ -172,11 +167,12 @@ class ModuleFinder(Component):
         return ModuleData(
             name=name,
             version=version,
-            role=role,
+            id=id,
             priority=priority,
             provides=provides,
             requires=requires,
             entry_point_filepath=entry_point_filepath,
+            entry_point_classname=class_name,
             metadata_filepath=metadata_filepath,
         )
     
@@ -185,6 +181,7 @@ class ModuleFinder(Component):
         :return: (entry_point_filepath, spec, class_name) from metadata
         :rtype: tuple[Path, ModuleSpec, str]
         """ 
+        name = metadata['name']
         entry_point = metadata.get("entry_point", "module:Module")
         module_file_name, class_name = entry_point.split(":")
         entry_point_filepath = metadata_path.parent / (module_file_name.replace(".", "/") + ".py")
@@ -192,48 +189,52 @@ class ModuleFinder(Component):
         if not entry_point_filepath.is_file():
             raise FileNotFoundError(entry_point_filepath)
 
-        spec = importlib.util.spec_from_file_location(
-            f"app_module_{metadata['name']}",
-            entry_point_filepath,
-        )
-
-        if spec is None or spec.loader is None:
-            raise ImportError(
-                f"Cannot load module: {entry_point_filepath}"
-            )
+        spec = self._get_spec(name=name, entry_point_filepath=entry_point_filepath)
 
         return entry_point_filepath, spec, class_name
+    
+
+    def _get_spec(self, name, entry_point_filepath):
+        spec = importlib.util.spec_from_file_location(f"app_module_{name}", entry_point_filepath)
+
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load module: {entry_point_filepath}")
+        
+        return spec
 
 
-    def _get_module(self, metadata_path, metadata) -> Module:
-        entry_point_filepath, spec, class_name = self._get_module_entry_point(metadata_path, metadata)
+    def get_module(self, moduledata: ModuleData) -> Module:
+        # entry_point_filepath, spec, class_name = self._get_module_entry_point(modu, metadata)
 
+        spec = self._get_spec(name=moduledata.name, entry_point_filepath=moduledata.entry_point_filepath)
+
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"Could not load module {moduledata.name}")
+        
         imported_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(imported_module)
 
+        class_name = moduledata.entry_point_classname
+
         module_class = getattr(imported_module, class_name)
 
-        if not isinstance(module_class, type) or not issubclass(
-            module_class, Module
-        ):
+        if not isinstance(module_class, type) or not issubclass(module_class, Module):
             raise TypeError(
                 f"{class_name} must inherit from Module"
             )
 
         instance = module_class(parent=self.parent)
-        instance.metadata = metadata
+        instance.metadata = asdict(moduledata)
 
         return instance
 
 
 class ModuleIndexer(Component):
     def on_init(self) -> None:
-        self.by_role: dict[str, list[ModuleData]] = {}
         self.by_provided_service: dict[str, list[ModuleData]] = {}
         self.by_name: dict[str, ModuleData] = {}
     
     def index(self, modules: list[ModuleData]):
-        self.by_role.clear()
         self.by_provided_service.clear()
 
         for module in modules:
@@ -242,9 +243,6 @@ class ModuleIndexer(Component):
                 raise ValueError(f"Duplicate module name: '{module.name}'")
             self.by_name[module.name] = module
 
-            # Index by role
-            self.by_role.setdefault(module.role, []).append(module)
-
             # Index by provided service
             for service in module.provides:
                 self.by_provided_service.setdefault(service, []).append(module)
@@ -252,20 +250,10 @@ class ModuleIndexer(Component):
         print("modules indexed")
 
 
-
 class DependencyResolver(Component):
-    
     def resolve(self, indexer: ModuleIndexer) -> tuple[dict[str, ModuleData], dict[str, list[ModuleData]]]:
         self.providers: dict[str, ModuleData] = {}
         self.dependencies: dict[str, list[ModuleData]] = {}
-
-        # Check required roles
-        # required_roles = {"core-module"} # lets not do that for now
-        required_roles = {}
-        for role in required_roles:
-            if not indexer.by_role.get(role):
-                raise RuntimeError(f"No module found for required role '{role}'")
-
 
         for module_data in indexer.by_name.values():
             self.dependencies[module_data.name] = []
