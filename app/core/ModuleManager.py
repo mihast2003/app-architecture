@@ -10,7 +10,7 @@ from app.core.architecture import Component, Module
 from dataclasses import dataclass, field, asdict
 from typing import Any
 
-from packaging.specifiers import SpecifierSet
+from packaging.specifiers import SpecifierSet, InvalidSpecifier
 from packaging.version import Version
 
 from app.core.ServiceManager import ServiceManager
@@ -36,7 +36,7 @@ class ModuleManager(Module):
 
         self.all_modules_data: list[ModuleData] = []
 
-        self.active_modules: list[Module] = []
+        self.active_modules_by_id: dict[str, Module] = {}
 
         self.on_init()
 
@@ -48,43 +48,74 @@ class ModuleManager(Module):
         # print(self.all_modules_data)
 
     def index_modules(self):
-        self.module_indexer = ModuleIndexer(parent=self)
-        self.module_indexer.index(self.all_modules_data)
+        self.moduledata_by_id = {module.id: module for module in self.all_modules_data}
 
     def resolve_dependencies(self):
         self.module_resolver = DependencyResolver(parent=self)
-        self.providers, self.dependencies = self.module_resolver.resolve(self.module_indexer)
+        self.resolved_services = self.module_resolver.resolve(self.all_modules_data)
 
-    def start_services(self):
+    def connect_services(self):
         self.service_manager = ServiceManager(parent=self)
 
-        for service_name, moduledata in self.providers.items():
-            module = self.module_finder.get_module(moduledata)
-            self._add_module(module, moduledata)
-            self.service_manager.register(name=service_name, module=module)
-            print(f"Added module '{moduledata.name}' as service '{service_name}'")
+        self.index_modules()
 
-    def _add_module(self, module, moduledata):
-        self.active_modules.append(module)
+        self._add_all_modules()
 
-    # def connect_services(self, role: str, service: Module):
-    #     for module in self.active_modules:
-    #         required_services = self.all_modules_data[module]
-    #         for service in required_services:
-    #             service_module = self.service_manager.get(service)
-    #             module.connect(service=service, module=service_module)
+        for service_name, provider_data in self.resolved_services.items():
+            provider_instance = self.active_modules_by_id[provider_data.id]
+            self.service_manager.register_service(service_name, provider_instance)
+            print(f"Added module '{provider_data.id}' as service '{service_name}'")
+
+        for module_id in self.active_modules_by_id:
+            instance = self.active_modules_by_id[module_id]
+            module_data = self.moduledata_by_id[module_id]
+
+            for service_name in module_data.requires:
+                instance.connect(service_name, self.service_manager.get_service(service_name))
+
+
+    def _add_all_modules(self):
+        for _, moduledata in self.moduledata_by_id.items():
+            self._add_module(moduledata)
+
+    def _add_module(self, moduledata: ModuleData):
+        module = self._instantiate_module(moduledata)
+        self.active_modules_by_id[moduledata.id] = module
+
+
+    def _instantiate_module(self, moduledata: ModuleData) -> Module:
+        spec = self.module_finder.get_spec(name=moduledata.name, entry_point_filepath=moduledata.entry_point_filepath)
+
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"Could not load module {moduledata.name}")
+        
+        imported_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(imported_module)
+
+        class_name = moduledata.entry_point_classname
+
+        module_class = getattr(imported_module, class_name)
+
+        if not isinstance(module_class, type) or not issubclass(module_class, Module):
+            raise TypeError(f"{class_name} must inherit from Module")
+
+        instance = module_class(parent=self)
+        instance.metadata = asdict(moduledata)
+
+        return instance
+
 
 # region all_helpers
     def start_all(self):
-        for module in self.active_modules:
+        for module in self.active_modules_by_id.values():
             module._init()
 
     def load_all(self):
-        for module in self.active_modules:
+        for module in self.active_modules_by_id.values():
             module._load()
 
     def unload_all(self):
-        for module in reversed(self.active_modules):
+        for module in reversed(self.active_modules_by_id.values()):
             module._unload()
 #endregion
 
@@ -189,12 +220,12 @@ class ModuleFinder(Component):
         if not entry_point_filepath.is_file():
             raise FileNotFoundError(entry_point_filepath)
 
-        spec = self._get_spec(name=name, entry_point_filepath=entry_point_filepath)
+        spec = self.get_spec(name=name, entry_point_filepath=entry_point_filepath)
 
         return entry_point_filepath, spec, class_name
     
 
-    def _get_spec(self, name, entry_point_filepath):
+    def get_spec(self, name, entry_point_filepath):
         spec = importlib.util.spec_from_file_location(f"app_module_{name}", entry_point_filepath)
 
         if spec is None or spec.loader is None:
@@ -203,84 +234,53 @@ class ModuleFinder(Component):
         return spec
 
 
-    def get_module(self, moduledata: ModuleData) -> Module:
-        # entry_point_filepath, spec, class_name = self._get_module_entry_point(modu, metadata)
-
-        spec = self._get_spec(name=moduledata.name, entry_point_filepath=moduledata.entry_point_filepath)
-
-        if spec is None or spec.loader is None:
-            raise RuntimeError(f"Could not load module {moduledata.name}")
-        
-        imported_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(imported_module)
-
-        class_name = moduledata.entry_point_classname
-
-        module_class = getattr(imported_module, class_name)
-
-        if not isinstance(module_class, type) or not issubclass(module_class, Module):
-            raise TypeError(
-                f"{class_name} must inherit from Module"
-            )
-
-        instance = module_class(parent=self.parent)
-        instance.metadata = asdict(moduledata)
-
-        return instance
-
-
-class ModuleIndexer(Component):
-    def on_init(self) -> None:
-        self.by_provided_service: dict[str, list[ModuleData]] = {}
-        self.by_name: dict[str, ModuleData] = {}
-    
-    def index(self, modules: list[ModuleData]):
-        self.by_provided_service.clear()
-
-        for module in modules:
-            # Index by name and raise an error if name repeats
-            if module.name in self.by_name:
-                raise ValueError(f"Duplicate module name: '{module.name}'")
-            self.by_name[module.name] = module
-
-            # Index by provided service
-            for service in module.provides:
-                self.by_provided_service.setdefault(service, []).append(module)
-
-        print("modules indexed")
-
 
 class DependencyResolver(Component):
-    def resolve(self, indexer: ModuleIndexer) -> tuple[dict[str, ModuleData], dict[str, list[ModuleData]]]:
-        self.providers: dict[str, ModuleData] = {}
-        self.dependencies: dict[str, list[ModuleData]] = {}
+    def resolve(self, modules: list[ModuleData]) -> dict[str, ModuleData]:
+        # service -> providers
+        providers: dict[str, list[ModuleData]] = {}
 
-        for module_data in indexer.by_name.values():
-            self.dependencies[module_data.name] = []
+        # service -> modules requiring it
+        requirements: dict[str, list[ModuleData]] = {}
 
-            for service, requirement in module_data.requires.items():
+        for module in modules:
+            for service, version in module.provides.items():
+                providers.setdefault(service, []).append(module)
 
-                candidates = indexer.by_provided_service.get(service, [])
+            for service, requirement in module.requires.items():
+                requirements.setdefault(service, []).append(module)
 
-                if not candidates:
-                    raise RuntimeError(f"Module '{module_data.name}' requires {service} {requirement}', but no provider was found")
+        # service -> selected provider
+        resolved_services: dict[str, ModuleData] = {}
 
-                compatible = [
-                    candidate
-                    for candidate in candidates
-                    if Version(candidate.provides[service])
-                    in SpecifierSet(requirement)
-                ]
+        for service, modules_requiring in requirements.items():
+            candidates = providers.get(service, [])
 
-                if not compatible:
-                    raise RuntimeError(f"Module '{module_data.name}' requires {service} {requirement}', but no compatible provider was found")
+            if not candidates:
+                raise RuntimeError(f"No provider found for required service '{service}'")
 
-                # Prefer the highest compatible service version
-                provider = max(compatible, key=lambda candidate: Version(candidate.provides[service]))
+            valid_candidates = []
 
-                self.providers[service] = provider
-                self.dependencies[module_data.name].append(provider)
+            for provider in candidates:
+                provider_version = Version(provider.provides[service])
 
-        print(self.providers)
-        print(self.dependencies)
-        return self.providers, self.dependencies
+                for module in modules_requiring:
+                    try:
+                        if provider_version in SpecifierSet(module.requires[service]):
+                            valid_candidates.append(provider)
+                    except InvalidSpecifier as e:
+                        raise RuntimeError(f"Check requirements config for module {module.id}: {e}") from e
+            
+            
+            if not valid_candidates:
+                raise RuntimeError(f"No compatible provider found for service '{service}'")
+
+            # Highest priority first, then highest version.
+            provider = max(
+                valid_candidates,
+                key=lambda module: (module.priority, Version(module.provides[service]),),
+            )
+
+            resolved_services[service] = provider
+
+        return resolved_services

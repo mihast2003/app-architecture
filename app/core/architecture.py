@@ -103,5 +103,6 @@ class Module(Component):
 
     def connect(self, service: str, module: Module):
         self.services[service] = module
+        print(f"connected module {module.__class__.__name__} as service {service}")
 
 
