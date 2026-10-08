@@ -104,3 +104,13 @@
 [16:11:13][DEBUG]: ModuleManager: Module loaded: ShopModule
 [16:11:13][DEBUG]: ModuleManager: Module loaded: CustomerModule
 [16:11:13][DEBUG]: ModuleManager: Component loaded: ServiceManager
+[17:10:15][DEBUG]: ModuleManager: Component loaded: ModuleFinder
+[17:10:15][DEBUG]: ModuleManager: Component loaded: DependencyResolver
+[17:10:52][DEBUG]: ModuleManager: Component loaded: ModuleFinder
+[17:10:52][DEBUG]: ModuleManager: Component loaded: DependencyResolver
+[17:10:52][DEBUG]: ModuleManager: Component loaded: LoadOrderResolver
+[17:10:52][DEBUG]: ModuleManager: Module loaded: CityModule
+[17:10:52][DEBUG]: ModuleManager: Module loaded: FabricModule
+[17:10:52][DEBUG]: ModuleManager: Module loaded: ShopModule
+[17:10:52][DEBUG]: ModuleManager: Module loaded: CustomerModule
+[17:10:52][DEBUG]: ModuleManager: Component loaded: ServiceManager

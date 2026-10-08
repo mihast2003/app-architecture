@@ -3,10 +3,10 @@ name = "Shop Module"
 version = "1.0.0"
 id = "yoji.shop-module"
 priority = 100
-core_module = true
 entry_point = "ShopModule:ShopModule"
 
 [provides]
 default-shop = "1.0"
 
 [requires]
+default-fabric = ">=1.0"

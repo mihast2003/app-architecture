@@ -1,0 +1,12 @@
+# city module
+name = "City Module"
+version = "1.0.0"
+id = "yoji.city-module"
+priority = 100
+core_module = true
+entry_point = "CityModule:CityModule"
+
+[provides]
+default-city = "1.0"
+
+[requires]

@@ -1,0 +1,13 @@
+# fabric module
+name = "Fabric Module"
+version = "1.0.0"
+id = "yoji.fabric-module"
+priority = 100
+core_module = true
+entry_point = "FabricModule:FabricModule"
+
+[provides]
+default-fabric = "1.0"
+
+[requires]
+default-city = ">=1.0"
