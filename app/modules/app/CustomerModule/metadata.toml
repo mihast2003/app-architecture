@@ -1,3 +1,4 @@
+# customer module
 name = "Customer Module"
 version = "1.0.0"
 id = "yoji.customer-module"

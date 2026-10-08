@@ -1,7 +1,9 @@
+# shop module
 name = "Shop Module"
 version = "1.0.0"
 id = "yoji.shop-module"
 priority = 100
+core_module = true
 entry_point = "ShopModule:ShopModule"
 
 [provides]
