@@ -15,6 +15,10 @@ from packaging.version import Version
 
 from app.core.ServiceManager import ServiceManager
 
+from collections import defaultdict, deque
+from packaging.specifiers import SpecifierSet
+from packaging.version import Version
+
 @dataclass
 class ModuleData():
     name: str
@@ -41,50 +45,40 @@ class ModuleManager(Module):
         self.on_init()
 
     def on_init(self):
-        self.module_finder = ModuleFinder(parent=self)
+        pass
 
     def discover_modules(self, modules_dir):
-        self.all_modules_data = self.module_finder.discover_modules(modules_dir)
+        module_finder = ModuleFinder(parent=self)
+        all_modules_data = module_finder.discover_modules(modules_dir)
         # print(self.all_modules_data)
+        self.index_modules(all_modules_data)
 
-    def index_modules(self):
-        self.moduledata_by_id = {module.id: module for module in self.all_modules_data}
+    def index_modules(self, all_modules_data: list[ModuleData]):
+        """Constucts different indexes of all found module data"""
+        self.all_modules_data = all_modules_data
+        self.moduledata_by_id = {module.id: module for module in all_modules_data}
 
     def resolve_dependencies(self):
-        self.module_resolver = DependencyResolver(parent=self)
-        self.resolved_services = self.module_resolver.resolve(self.all_modules_data)
+        dependency_resolver = DependencyResolver(parent=self)
+        self.resolved_services = dependency_resolver.resolve(self.all_modules_data)
 
-    def connect_services(self):
-        self.service_manager = ServiceManager(parent=self)
+    def resolve_load_order(self):
+        load_order_resolver = LoadOrderResolver(parent=self)
+        self.load_order = load_order_resolver.resolve(self.moduledata_by_id)
 
-        self.index_modules()
+        print(self.load_order)
 
-        self._add_all_modules()
-
-        for service_name, provider_data in self.resolved_services.items():
-            provider_instance = self.active_modules_by_id[provider_data.id]
-            self.service_manager.register_service(service_name, provider_instance)
-            print(f"Added module '{provider_data.id}' as service '{service_name}'")
-
-        for module_id in self.active_modules_by_id:
-            instance = self.active_modules_by_id[module_id]
-            module_data = self.moduledata_by_id[module_id]
-
-            for service_name in module_data.requires:
-                instance.connect(service_name, self.service_manager.get_service(service_name))
-
-
-    def _add_all_modules(self):
-        for _, moduledata in self.moduledata_by_id.items():
+    def load_modules(self):
+        for moduledata in self.load_order:
             self._add_module(moduledata)
 
     def _add_module(self, moduledata: ModuleData):
         module = self._instantiate_module(moduledata)
         self.active_modules_by_id[moduledata.id] = module
-
+        print(f"instantiated module {moduledata.id}")
 
     def _instantiate_module(self, moduledata: ModuleData) -> Module:
-        spec = self.module_finder.get_spec(name=moduledata.name, entry_point_filepath=moduledata.entry_point_filepath)
+        spec = self._get_spec(name=moduledata.name, entry_point_filepath=moduledata.entry_point_filepath)
 
         if spec is None or spec.loader is None:
             raise RuntimeError(f"Could not load module {moduledata.name}")
@@ -103,6 +97,30 @@ class ModuleManager(Module):
         instance.metadata = asdict(moduledata)
 
         return instance
+
+    def _get_spec(self, name, entry_point_filepath):
+        spec = importlib.util.spec_from_file_location(f"app_module_{name}", entry_point_filepath)
+
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load module: {entry_point_filepath}")
+        
+        return spec
+    
+
+    def connect_services(self):
+        service_manager = ServiceManager(parent=self)
+
+        for service_name, provider_data in self.resolved_services.items():
+            provider_instance = self.active_modules_by_id[provider_data.id]
+            service_manager.register_service(service_name, provider_instance)
+            print(f"Added module '{provider_data.id}' as service '{service_name}'")
+
+        for module_id in self.active_modules_by_id:
+            instance = self.active_modules_by_id[module_id]
+            module_data = self.moduledata_by_id[module_id]
+
+            for service_name in module_data.requires:
+                instance.connect(service_name, service_manager.get_service(service_name))
 
 
 # region all_helpers
@@ -220,12 +238,12 @@ class ModuleFinder(Component):
         if not entry_point_filepath.is_file():
             raise FileNotFoundError(entry_point_filepath)
 
-        spec = self.get_spec(name=name, entry_point_filepath=entry_point_filepath)
+        spec = self._get_spec(name=name, entry_point_filepath=entry_point_filepath)
 
         return entry_point_filepath, spec, class_name
     
 
-    def get_spec(self, name, entry_point_filepath):
+    def _get_spec(self, name, entry_point_filepath):
         spec = importlib.util.spec_from_file_location(f"app_module_{name}", entry_point_filepath)
 
         if spec is None or spec.loader is None:
@@ -234,13 +252,14 @@ class ModuleFinder(Component):
         return spec
 
 
-
 class DependencyResolver(Component):
     def resolve(self, modules: list[ModuleData]) -> dict[str, ModuleData]:
-        # service -> providers
+        print("start")
+
+        # service[providers]
         providers: dict[str, list[ModuleData]] = {}
 
-        # service -> modules requiring it
+        # service[modules requiring it]
         requirements: dict[str, list[ModuleData]] = {}
 
         for module in modules:
@@ -250,14 +269,15 @@ class DependencyResolver(Component):
             for service, requirement in module.requires.items():
                 requirements.setdefault(service, []).append(module)
 
-        # service -> selected provider
+        # service[selected provider]
         resolved_services: dict[str, ModuleData] = {}
 
         for service, modules_requiring in requirements.items():
             candidates = providers.get(service, [])
+            print("canditaes", candidates)
 
             if not candidates:
-                raise RuntimeError(f"No provider found for required service '{service}'")
+                raise RuntimeError(f"No provider found for required service '{service}', which is required by {modules_requiring}")
 
             valid_candidates = []
 
@@ -269,18 +289,78 @@ class DependencyResolver(Component):
                         if provider_version in SpecifierSet(module.requires[service]):
                             valid_candidates.append(provider)
                     except InvalidSpecifier as e:
-                        raise RuntimeError(f"Check requirements config for module {module.id}: {e}") from e
+                        raise RuntimeError(f"Check requirements config for module {module.name}({module.id}): {e}") from e
             
             
             if not valid_candidates:
                 raise RuntimeError(f"No compatible provider found for service '{service}'")
 
             # Highest priority first, then highest version.
-            provider = max(
-                valid_candidates,
-                key=lambda module: (module.priority, Version(module.provides[service]),),
-            )
+            provider = max(valid_candidates, key=lambda module: (module.priority, Version(module.provides[service]),),)
 
             resolved_services[service] = provider
 
         return resolved_services
+    
+
+class LoadOrderResolver(Component):
+    def resolve(self, modules_by_id: dict[str, ModuleData]) -> list[ModuleData]:
+        modules = modules_by_id
+
+        providers: dict[str, list[ModuleData]] = defaultdict(list)
+
+        for module in modules.values():
+            for service in module.provides:
+                providers[service].append(module)
+
+        dependencies: dict[str, set[str]] = {module.id: set() for module in modules.values()}
+
+        for module in modules.values():
+            for service, specifier in module.requires.items():
+                candidates = providers.get(service, [])
+
+                if not candidates:
+                    raise RuntimeError(f"Module '{module.name}' requires '{service}', but no provider was found.")
+
+                try:
+                    valid_candidates = [provider for provider in candidates if Version(provider.provides[service]) in SpecifierSet(specifier)]
+                except InvalidSpecifier as e:
+                    raise RuntimeError(f"Invalid requirement '{specifier}' in module '{module.name}' for service '{service}'.") from e
+
+                if not valid_candidates:
+                    raise RuntimeError(f"Module '{module.name}' requires '{service} {specifier}', but no compatible provider was found.")
+
+                provider = max(valid_candidates, key=lambda m: (Version(m.version), m.priority))
+
+                if provider.id == module.id:
+                    raise RuntimeError(f"Module '{module.name}' cannot depend on itself.")
+
+                dependencies[module.id].add(provider.id)
+
+        # Copy used only by the topological sort.
+        remaining_dependencies = {module_id: set(deps) for module_id, deps in dependencies.items()}
+
+        load_order: list[ModuleData] = []
+        queue = deque(
+            module_id
+            for module_id, deps in remaining_dependencies.items()
+            if not deps
+        )
+
+        while queue:
+            module_id = queue.popleft()
+            load_order.append(modules[module_id])
+
+            for dependent_id, deps in remaining_dependencies.items():
+                if module_id in deps:
+                    deps.remove(module_id)
+
+                    if not deps:
+                        queue.append(dependent_id)
+
+        if len(load_order) != len(modules):
+            remaining = [module_id for module_id, deps in remaining_dependencies.items() if deps]
+
+            raise RuntimeError("Circular module dependency detected involving: " + ", ".join(remaining))
+
+        return load_order

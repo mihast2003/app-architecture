@@ -17,14 +17,18 @@ class Application():
         # self.module_manager.load_core_modules(modules_dir)
 
         self.module_manager.discover_modules(modules_dir)
-        # self.module_manager.index_modules()
+
         self.module_manager.resolve_dependencies()
+
+        self.module_manager.resolve_load_order()
+
+        self.module_manager.load_modules()
 
         self.module_manager.connect_services()
 
-        self.module_manager.start_all()
+        # self.module_manager.start_all()
 
-        self.module_manager.load_all()
+        # self.module_manager.load_all()
 
     def debug(self):
         print("debugging application")

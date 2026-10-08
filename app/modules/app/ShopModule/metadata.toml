@@ -8,4 +8,3 @@ entry_point = "ShopModule:ShopModule"
 default-shop = "1.0"
 
 [requires]
-default-customer = "-1.0"
