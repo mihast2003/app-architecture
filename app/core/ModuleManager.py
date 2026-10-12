@@ -301,33 +301,45 @@ class DependencyResolver(Component):
             resolved_services[service] = provider
 
         return resolved_services
-    
+
+
 DEBUG = True
 
 class LoadOrderResolver(Component):
 
     def resolve(self, modules_by_id: dict[str, ModuleData]) -> list[ModuleData]:
-        load_order: list[ModuleData] = []
 
-        self.get_core_modules(modules_by_id)
+        core_modules = self.get_core_modules(modules_by_id)
 
-        self.find_all_needed_services(modules_by_id)
+        required_services = self.find_all_required_services(modules_by_id)
 
-        self.get_module_for_each_service(modules_by_id)
+        service_to_module = self.assign_module_for_each_service(modules_by_id, core_modules, required_services)
+
+        load_order = self.build_load_order(modules_by_id, service_to_module)
 
         return load_order
     
     def get_core_modules(self, modules_by_id):
+        core_modules = set()
         # find all core modules
         # get their dependencies and resolve them
-        # 
+        return core_modules
+
+    def find_all_required_services(self, modules_by_id):
+        required_services = set()
+        # scan all modules and build a set of services if they can agree on versions
+        # e.g. Module1 version="=1.0" and Module2 version="=2.0" they are unresolvable
+        return required_services
+
+    def assign_module_for_each_service(self, modules_by_id, core_modules, required_services):
+        # find a module to provide every service
+        # raise an error if two modules provide the same service if a "safe mode" setting is on
         pass
 
-    def find_all_needed_services(self, modules_by_id):
-        pass
-
-    def get_module_for_each_service(self, modules_by_id):
-        pass
+    def build_load_order(self, modules_by_id, service_to_module):
+        load_order = []
+        # topological sort the core-modules + other modules to determine the load order
+        return load_order
 
 
 
