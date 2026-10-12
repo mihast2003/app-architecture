@@ -1,0 +1,12 @@
+# useless module
+name = "Useless Module"
+version = "1.0.0"
+id = "yoji.useless-module"
+priority = 0
+entry_point = "UselessModule:UselessModule"
+
+[provides]
+
+
+[requires]
+default-shop = ">=2.0"

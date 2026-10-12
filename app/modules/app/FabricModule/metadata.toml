@@ -2,8 +2,7 @@
 name = "Fabric Module"
 version = "1.0.0"
 id = "yoji.fabric-module"
-priority = 100
-core_module = true
+priority = 0
 entry_point = "FabricModule:FabricModule"
 
 [provides]

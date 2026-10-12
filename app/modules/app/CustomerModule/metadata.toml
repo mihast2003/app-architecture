@@ -2,7 +2,7 @@
 name = "Customer Module"
 version = "1.0.0"
 id = "yoji.customer-module"
-priority = 100
+priority = 0
 entry_point = "CustomerModule:CustomerModule"
 
 [provides]

@@ -1,0 +1,12 @@
+# better fabric module
+name = "Fabric Module but its better"
+version = "1.0.0"
+id = "yoji.better_modules.fabric-module"
+priority = 1
+entry_point = "BetterFabricModule:BetterFabricModule"
+
+[provides]
+default-fabric = "1.0"
+
+[requires]
+default-city = ">=1.0"
