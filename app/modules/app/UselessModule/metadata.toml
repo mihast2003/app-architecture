@@ -9,4 +9,4 @@ entry_point = "UselessModule:UselessModule"
 
 
 [requires]
-default-shop = ">=2.0"
+default-shop = ">=1.0"

@@ -5,4 +5,4 @@ class CityModule(Module):
         pass
 
     def on_load(self):
-        print("ShopModule loaded 1") 
+        print("City loaded") 

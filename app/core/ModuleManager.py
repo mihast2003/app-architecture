@@ -309,34 +309,89 @@ class LoadOrderResolver(Component):
 
     def resolve(self, modules_by_id: dict[str, ModuleData]) -> list[ModuleData]:
 
-        core_modules = self.get_core_modules(modules_by_id)
+        # core_modules = self.get_core_modules(modules_by_id)
+        # print("core modules", core_modules)
 
         required_services = self.find_all_required_services(modules_by_id)
+        print("required_services", required_services)
 
-        service_to_module = self.assign_module_for_each_service(modules_by_id, core_modules, required_services)
+        service_to_module: dict[str, ModuleData] = self.assign_module_for_each_service(modules_by_id, required_services)
 
-        load_order = self.build_load_order(modules_by_id, service_to_module)
+        # load_order = self.build_load_order(modules_by_id, service_to_module)
 
-        return load_order
+        # return load_order
+        return []
     
-    def get_core_modules(self, modules_by_id):
+    def get_core_modules(self, modules_by_id: dict[str, ModuleData]):
         core_modules = set()
+
         # find all core modules
-        # get their dependencies and resolve them
+        for module in modules_by_id.values():
+            if module.core_module:
+                core_modules.add(module)
+
         return core_modules
 
-    def find_all_required_services(self, modules_by_id):
-        required_services = set()
-        # scan all modules and build a set of services if they can agree on versions
-        # e.g. Module1 version="=1.0" and Module2 version="=2.0" they are unresolvable
+    def find_all_required_services(self, modules_by_id: dict[str, ModuleData]) -> dict[str, SpecifierSet]:
+        required_services: dict[str, SpecifierSet] = {}
+        service_requirements: dict[str, list[tuple[str, str]]] = defaultdict(list)
+
+        for module in modules_by_id.values():
+            for service, requirement in module.requires.items():
+                specifier = SpecifierSet(requirement)
+                service_requirements[service].append((module.id, requirement))
+
+                if service in required_services:
+                    required_services[service] &= specifier
+                else:
+                    required_services[service] = specifier
+
+        for service, combined in required_services.items():
+            versions = self._candidate_versions(service, modules_by_id)
+
+            if not any(Version(version) in combined for version in versions):
+                module_ids = [f"{module_id} ({requirement})" for module_id, requirement in service_requirements[service]]
+                raise RuntimeError(f"Incompatible version requirements for service '{service}' by modules: {', '.join(module_ids)}")
+
         return required_services
+    
+    def _candidate_versions(self, service: str, modules_by_id: dict[str, ModuleData]) -> list[str]:
+        return [module.provides[service] for module in modules_by_id.values() if service in module.provides]
 
-    def assign_module_for_each_service(self, modules_by_id, core_modules, required_services):
-        # find a module to provide every service
-        # raise an error if two modules provide the same service if a "safe mode" setting is on
-        pass
+    def assign_module_for_each_service(self, modules_by_id: dict[str, ModuleData], required_services: dict[str, SpecifierSet]) -> dict[str, ModuleData]:
+        providers = self._get_providers(modules_by_id)
+        service_to_module: dict[str, ModuleData] = {}
 
-    def build_load_order(self, modules_by_id, service_to_module):
+        for service, requirement in required_services.items():
+            candidates = [module for module in providers.get(service, []) if Version(module.provides[service]) in requirement]
+
+            if not candidates:
+                raise RuntimeError(f"No provider satisfies service '{service}' with requirement '{requirement}'")
+
+            highest_priority = max(m.priority for m in candidates)
+            winners = [m for m in candidates if m.priority == highest_priority]
+            if len(winners) > 1: raise RuntimeError(f"Priority tie for service '{service}': {[m.id for m in winners]}")
+            service_to_module[service] = winners[0]
+
+        print("\nService to module:")
+        for service, module in service_to_module.items():
+            print(f"   '{service}': {module.id}")
+        return service_to_module
+    
+    def _get_providers(self, modules_by_id: dict[str, ModuleData]):
+        providers: dict[str, list[ModuleData]] = defaultdict(list)
+
+        for module in modules_by_id.values():
+            for service in module.provides:
+                providers[service].append(module)
+
+        # print("\nProviders:")
+        # for service, service_providers in providers.items():
+        #     print(f"  {service}: {[module.id for module in service_providers]}")
+
+        return providers
+
+    def build_load_order(self, modules_by_id: dict[str, ModuleData], service_to_module):
         load_order = []
         # topological sort the core-modules + other modules to determine the load order
         return load_order
