@@ -19,13 +19,15 @@ from collections import defaultdict, deque
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
-@dataclass
+@dataclass(eq=False)
 class ModuleData():
     name: str
     version: str
     id: str
     priority: int
+
     core_module: bool
+    standalone_module: bool
 
     provides: dict[str, str]
     requires: dict[str, str]
@@ -59,13 +61,13 @@ class ModuleManager(Module):
         self.all_modules_data = all_modules_data
         self.moduledata_by_id = {module.id: module for module in all_modules_data}
 
-    def resolve_dependencies(self):
-        dependency_resolver = DependencyResolver(parent=self)
-        self.resolved_services = dependency_resolver.resolve(self.all_modules_data)
+    def resolve_services(self):
+        service_resolver = ServiceResolver(parent=self)
+        self.resolved_services = service_resolver.resolve(self.moduledata_by_id)
 
-    def resolve_load_order(self):
-        load_order_resolver = LoadOrderResolver(parent=self)
-        self.load_order = load_order_resolver.resolve(self.moduledata_by_id)
+    def build_load_order(self):
+        load_orderer = LoadOrderResolver(parent=self)
+        self.load_order = load_orderer.build_load_order(self.moduledata_by_id, self.resolved_services)
 
     def load_modules(self):
         print("--- Instancing modules ---")
@@ -172,6 +174,7 @@ class ModuleFinder(Component):
             id = metadata["id"]
             priority = metadata["priority"]
             core_module = metadata.get("core_module", False)
+            standalone_module = metadata.get("standalone_module", False)
             provides = metadata["provides"]
             requires = metadata["requires"]
 
@@ -198,6 +201,9 @@ class ModuleFinder(Component):
         if not isinstance(core_module, bool):
             raise ValueError("'core_module' must be a bool")
 
+        if not isinstance(standalone_module, bool):
+            raise ValueError("'standalone_module' must be a bool")
+
         if not isinstance(provides, dict):
             raise ValueError("'provides' must be a table")
 
@@ -219,6 +225,7 @@ class ModuleFinder(Component):
             id=id,
             priority=priority,
             core_module=core_module,
+            standalone_module=standalone_module,
             provides=provides,
             requires=requires,
             entry_point_filepath=entry_point_filepath,
@@ -254,7 +261,7 @@ class ModuleFinder(Component):
 
 
 class DependencyResolver(Component):
-    def resolve(self, modules: list[ModuleData]) -> dict[str, ModuleData]:
+    def old_resolve(self, modules: list[ModuleData]) -> dict[str, ModuleData]:
 
         # service[providers]
         providers: dict[str, list[ModuleData]] = {}
@@ -305,10 +312,9 @@ class DependencyResolver(Component):
 
 DEBUG = True
 
-class LoadOrderResolver(Component):
+class ServiceResolver(Component):
 
-    def resolve(self, modules_by_id: dict[str, ModuleData]) -> list[ModuleData]:
-
+    def resolve(self, modules_by_id: dict[str, ModuleData]) -> dict[str, ModuleData]:
         # core_modules = self.get_core_modules(modules_by_id)
         # print("core modules", core_modules)
 
@@ -320,17 +326,7 @@ class LoadOrderResolver(Component):
         # load_order = self.build_load_order(modules_by_id, service_to_module)
 
         # return load_order
-        return []
-    
-    def get_core_modules(self, modules_by_id: dict[str, ModuleData]):
-        core_modules = set()
-
-        # find all core modules
-        for module in modules_by_id.values():
-            if module.core_module:
-                core_modules.add(module)
-
-        return core_modules
+        return service_to_module
 
     def find_all_required_services(self, modules_by_id: dict[str, ModuleData]) -> dict[str, SpecifierSet]:
         required_services: dict[str, SpecifierSet] = {}
@@ -338,7 +334,11 @@ class LoadOrderResolver(Component):
 
         for module in modules_by_id.values():
             for service, requirement in module.requires.items():
-                specifier = SpecifierSet(requirement)
+                try:
+                    specifier = SpecifierSet(requirement)
+                except InvalidSpecifier as e:
+                    raise RuntimeError(f"Check requirements config for module {module.name}({module.id}): {e}") from e
+                
                 service_requirements[service].append((module.id, requirement))
 
                 if service in required_services:
@@ -366,7 +366,7 @@ class LoadOrderResolver(Component):
             candidates = [module for module in providers.get(service, []) if Version(module.provides[service]) in requirement]
 
             if not candidates:
-                raise RuntimeError(f"No provider satisfies service '{service}' with requirement '{requirement}'")
+                raise RuntimeError(f"No provider satisfies required service '{service}' with requirement '{requirement}'")
 
             highest_priority = max(m.priority for m in candidates)
             winners = [m for m in candidates if m.priority == highest_priority]
@@ -391,205 +391,39 @@ class LoadOrderResolver(Component):
 
         return providers
 
-    def build_load_order(self, modules_by_id: dict[str, ModuleData], service_to_module):
-        load_order = []
-        # topological sort the core-modules + other modules to determine the load order
-        return load_order
 
 
+class LoadOrderResolver(Component):
 
-    def old_resolve(self, modules_by_id: dict[str, ModuleData]) -> list[ModuleData]:
-        modules = modules_by_id
-        if DEBUG: print("modules", modules)
-
-        if DEBUG: print("\n=== DEPENDENCY RESOLUTION ===")
-        if DEBUG: print("Modules:", list(modules))
-
-        providers: dict[str, list[ModuleData]] = defaultdict(list)
-
-        for module in modules.values():
-            for service in module.provides:
-                providers[service].append(module)
-
-        if DEBUG: print("\nProviders:")
-        for service, service_providers in providers.items():
-            if DEBUG: print(f"  {service}: {[module.id for module in service_providers]}")
-
-        used_services = {service for module in modules.values() for service in module.requires}
-        if DEBUG: print("\nUsed services:", used_services)
-
-        active: set[str] = {module.id for module in modules.values() if module.core_module}
-
-        if DEBUG: print("\nInitial active modules:", active)
-
-        def get_provider(module: ModuleData, service: str, specifier: str) -> ModuleData | None:
-            if DEBUG: print(f"    Looking for provider of '{service} {specifier}' for '{module.id}'")
-
-            try:
-                candidates = [
-                    provider
-                    for provider in providers.get(service, [])
-                    if Version(provider.provides[service]) in SpecifierSet(specifier)
-                ]
-            except InvalidSpecifier as e:
-                if DEBUG: print(f"    INVALID SPECIFIER: {specifier}")
-                raise RuntimeError(f"Invalid requirement '{specifier}' in module '{module.name}' for service '{service}'.") from e
-
-            if DEBUG: print(f"    Compatible providers: {[provider.id for provider in candidates]}")
-
-            if not candidates:
-                if DEBUG: print("    -> NO PROVIDER")
-                return None
-
-            provider = max(candidates, key=lambda m: (Version(m.provides[service]), m.priority))
-
-            if DEBUG: print(f"    -> Selected provider: {provider.id}")
-            return provider
-
-        def is_selected_provider(module: ModuleData) -> bool:
-            return any(
-                get_provider(other, service, specifier) == module
-                for other in modules.values()
-                for service, specifier in other.requires.items()
-                if service in module.provides
-            )
-        
-        changed = True
-        iteration = 0
-
-        while changed:
-            iteration += 1
-            changed = False
-
-            if DEBUG: print(f"\n--- ACTIVATION PASS {iteration} ---")
-            if DEBUG: print("Active before pass:", active)
-
-            for module in modules.values():
-                if DEBUG: print(f"\nChecking module '{module.id}'")
-                if DEBUG: print(f"  Core: {module.core_module}")
-                if DEBUG: print(f"  Requires: {module.requires}")
-                if DEBUG: print(f"  Provides: {module.provides}")
-
-                if module.id in active:
-                    if DEBUG: print("  -> Already active")
-                    continue
-
-                if module.provides and not is_selected_provider(module) and not module.core_module:
-                    if DEBUG: print("  -> Not selected as a provider; skipping")
-                    continue
-
-                unresolved = []
-
-                for service, specifier in module.requires.items():
-                    provider = get_provider(module, service, specifier)
-
-                    if provider is None:
-                        unresolved.append((service, specifier))
-
-                if not unresolved:
-                    if DEBUG: print("  -> ALL REQUIREMENTS RESOLVE")
-                    if DEBUG: print(f"  -> ACTIVATING '{module.id}'")
-                    active.add(module.id)
-                    changed = True
-                else:
-                    if DEBUG: print(f"  -> UNRESOLVED: {unresolved}")
-
-            if DEBUG: print("\nActive after pass:", active)
-
-        if DEBUG: print("\n=== ACTIVATION COMPLETE ===")
-        if DEBUG: print("Active modules:", active)
-
-        if DEBUG: print("\nChecking unresolved modules...")
-
-        for module in modules.values():
-            if module.id in active:
-                continue
-
-            if DEBUG: print(f"\nUnresolved module: '{module.id}'")
-
-            if module.core_module:
-                if DEBUG: print("  -> CORE MODULE, ERROR")
-                raise RuntimeError(f"Core module '{module.name}' has unresolvable requirements.")
-
-            provided_is_used = any(service in used_services for service in module.provides)
-
-            if DEBUG: print(f"  Provided services: {module.provides}")
-            if DEBUG: print(f"  Provided service used: {provided_is_used}")
-
-            if provided_is_used:
-                if DEBUG: print("  -> USED PROVIDER, ERROR")
-                raise RuntimeError(
-                    f"Module '{module.name}' has unresolvable requirements, "
-                    f"but provides a service that is required by another module."
-                )
-
-            if DEBUG: print("  -> UNUSED PROVIDER, IGNORING")
-            print(f"Did not load module {module.id} from {module.entry_point_filepath}:\n    >it seems to be unused and has unresolvable dependencies")
-
-        if DEBUG: print("\n=== BUILDING DEPENDENCY GRAPH ===")
-
-        dependencies: dict[str, set[str]] = {module_id: set() for module_id in active}
-
-        for module_id in active:
-            module = modules[module_id]
-
-            if DEBUG: print(f"\nModule '{module_id}'")
-
-            for service, specifier in module.requires.items():
-                provider = get_provider(module, service, specifier)
-
-                if provider is None:
-                    raise RuntimeError(
-                        f"Module '{module.name}' requires '{service} {specifier}', "
-                        f"but no compatible provider was found."
-                    )
-
-                if DEBUG: print(f"  {service} -> {provider.id}")
-
-                if provider.id == module.id:
-                    raise RuntimeError(f"Module '{module.name}' cannot depend on itself.")
-
-                dependencies[module.id].add(provider.id)
-
-        if DEBUG: print("\nDependencies:")
-        for module_id, deps in dependencies.items():
-            if DEBUG: print(f"  {module_id} -> {deps}")
-
-        remaining = {module_id: set(deps) for module_id, deps in dependencies.items()}
-
+    def build_load_order(self, modules_by_id: dict[str, ModuleData], service_to_module) -> list[ModuleData]:
         load_order: list[ModuleData] = []
-        queue = deque(module_id for module_id, deps in remaining.items() if not deps)
 
-        if DEBUG: print("\nInitial queue:", list(queue))
+        core_modules, standalone_modules = self._get_core_and_standalone_modules(modules_by_id)
+        service_modules = self._get_service_modules(service_to_module)
 
-        while queue:
-            module_id = queue.popleft()
-            if DEBUG: print(f"Loading order: adding '{module_id}'")
-
-            load_order.append(modules[module_id])
-
-            for dependent_id, deps in remaining.items():
-                if module_id in deps:
-                    deps.remove(module_id)
-
-                    if not deps:
-                        if DEBUG: print(f"  -> '{dependent_id}' is now ready")
-                        queue.append(dependent_id)
-
-        if len(load_order) != len(active):
-            remaining_modules = [
-                module_id for module_id, deps in remaining.items() if deps
-            ]
-
-            if DEBUG: print("\nCYCLE DETECTED")
-            if DEBUG: print("Remaining:", remaining_modules)
-
-            raise RuntimeError(
-                "Circular module dependency detected involving: "
-                + ", ".join(remaining_modules)
-            )
-
-        print("\n=== FINAL LOAD ORDER ===")
-        print([module.id for module in load_order])
+        load_order += core_modules
+        load_order += service_modules
+        load_order += standalone_modules
 
         return load_order
+
+    def _get_core_and_standalone_modules(self, modules_by_id: dict[str, ModuleData]):
+        core_modules = set()
+        standalone_modules = set()
+
+        # find all core modules
+        for module in modules_by_id.values():
+            if module.core_module:
+                core_modules.add(module)
+            elif module.standalone_module:
+                standalone_modules.add(module)
+
+        return core_modules, standalone_modules
+    
+    def _get_service_modules(self, service_to_module: dict[str, ModuleData]):
+            service_modules = set()
+    
+            for module in service_to_module.values():
+                service_modules.add(module)
+    
+            return service_modules

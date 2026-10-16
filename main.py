@@ -3,7 +3,7 @@ from app.core.architecture import Component, Module
 
 from app.core.ModuleManager import ModuleManager
 
-from app.core.application import Application
+from app.core.Application import Application
 
 
 app = Application()

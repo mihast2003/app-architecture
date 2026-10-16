@@ -5,7 +5,8 @@ from app.core.architecture import Component, Module
 
 from app.core.ModuleManager import ModuleManager
 
-ROOT_DIR = Path("D:\\work\\projects\\app-architecture")
+# ROOT_DIR = Path("D:\\work\\projects\\app-architecture")
+ROOT_DIR = Path("D:\\misha\\python\\local_repo\\app-architecture")
 
 
 class Application():
@@ -18,9 +19,9 @@ class Application():
 
         self.module_manager.discover_modules(modules_dir)
 
-        self.module_manager.resolve_dependencies()
+        self.module_manager.resolve_services()
 
-        self.module_manager.resolve_load_order()
+        self.module_manager.build_load_order()
 
         self.module_manager.load_modules()
 
